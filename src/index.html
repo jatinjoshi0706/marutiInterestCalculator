@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta charset="UTF-8" />
+  <title>Nimar Motors Interest Calculator</title>
+  <link rel="stylesheet" href="index.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter&display=swap" rel="stylesheet">
+</head>
+
+<body>
+  &nbsp;&nbsp;&nbsp;
+  <div class="container" style="text-align: center;">
+    <img style="text-align: center;" src="./assets/NimarMotor.png" alt="logo" />
+    <h1 style="text-align: center;color: #2d2a26;">Nimar Motors</h1>
+    <h1 style="text-align: center;color: #2d2a26;"> Interest Calculator </h1>
+    <h4 style="text-align: center;color: #2d2a26;">Choose Your file to upload.</h4>
+    <div style="display: flex; justify-content: center;" class="main">
+      <div style="display: flex; text-align: center;" class="container1">
+        <label  style="line-height: 1.5;" for="file-input1">Select Challan Excel : </label>
+        <input class="balloon" type="file" name="file1" id="file-input1" />
+      </div>
+      <div style="display: flex; text-align: center;" class="container2">
+        <label style="line-height: 1.5;" for="file-input2">Select Payment Receipt :</label>
+        <input class="balloon" type="file" name="file2" id="file-input2">
+      </div>
+    </div>
+    <table class="finalSheetContainer"></table>
+  </div>
+
+  <script src="preload.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.17.0/xlsx.full.min.js"></script>
+
+</body>
+
+</html>
