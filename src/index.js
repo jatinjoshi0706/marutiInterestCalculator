@@ -2,7 +2,7 @@ const { app, BrowserWindow, ipcMain } = require("electron");
 const path = require("node:path");
 const XLSX = require("xlsx");
 const writeXlsxFile = require("write-excel-file/node");
-
+const fs = require('fs');
 if (require("electron-squirrel-startup")) {
   app.quit();
 }
@@ -10,9 +10,9 @@ if (require("electron-squirrel-startup")) {
 const createWindow = () => {
   const mainWindow = new BrowserWindow({
     title: 'Nimar Motors Khargone',
-    width: 800,
-    height: 600,
-    icon: path.join(__dirname, 'NimarMotor.png'),
+    // width: 1290,
+    // height: 1080,
+    icon: path.join(__dirname, './assets/NimarMotor.png'),
     autoHideMenuBar: true,
     webPreferences: {
       contextIsolation: true,
@@ -20,10 +20,16 @@ const createWindow = () => {
       preload: path.join(__dirname, "preload.js"),
     },
   });
-
+  ipcMain.on('reset-application', () => {
+    mainWindow.reload();
+  });
+  mainWindow.once('ready-to-show', () => {
+    mainWindow.maximize()
+  })
   mainWindow.loadFile(path.join(__dirname, "index.html"));
   // mainWindow.webContents.openDevTools();
 };
+
 
 let data1 = [];
 let data2 = [];
@@ -32,25 +38,70 @@ let dat1;
 let dat2;
 let cMap;
 
-function calculateDaysBetween(startDate, endDate) {
+
+//changes start
+let interestPercent = 0;
+let noDueDays = 0;
+let EndDate = 0;
+let customerIdVal = '';
+function calculateDaysBetween(startDate, EndDate) {
   const start = new Date(startDate);
-  const end = new Date(endDate);
+  const end = new Date(EndDate);
   const diffTime = Math.abs(end - start);
   return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 }
 
-let EndDate = "2025-03-31T18:30:00.000Z";
+// let EndDate = "2025-03-31T18:30:00.000Z";
 function interestAmount(dueAmt, dueDays) {
-  return (dueDays * (((dueAmt) * 0.135) / 365));
+  return (dueDays * (((dueAmt) * interestPercent) / 365));
 }
 
 function applyPaymentsAndCalculateInterest(datt1, datt2) {
 
-  cMap = datt1.reduce((acc, purchase) => {
-    if (!acc[purchase['Customer Code']]) acc[purchase['Customer Code']] = [];
-    acc[purchase['Customer Code']].push({ ...purchase, RemainingChallanAmount: purchase['Total Amount'], LastPaymentDate: 0, interest: 0 });
-    return acc;
-  }, {});
+  // cMap = datt1.reduce((acc, purchase) => {
+  //   if(EndDate >  purchase['Date']){
+  //     if (!acc[purchase['Customer Code']]) acc[purchase['Customer Code']] = [];
+  //     acc[purchase['Customer Code']].push({ ...purchase, RemainingChallanAmount: purchase['Total Amount'], LastPaymentDate: 0, interest: 0 });
+  //     return acc;
+  //   }
+  // }, {});
+
+  if (customerIdVal !== '' && customerIdVal !== 0) {
+    cMap = datt1.reduce((acc, purchase) => {
+      const parsedPurchaseDate = XLSX.SSF.parse_date_code(purchase.Date);
+      const jsPurchaseDate = new Date(parsedPurchaseDate.y, parsedPurchaseDate.m - 1, parsedPurchaseDate.d);
+      if (jsPurchaseDate < new Date(EndDate)) {
+        if (purchase['Customer Name'].includes(customerIdVal) || purchase['Customer Code'].includes(customerIdVal)) {
+          acc[customerIdVal] = acc[customerIdVal] || [];
+          acc[customerIdVal].push({
+            ...purchase,
+            RemainingChallanAmount: purchase['Total Amount'],
+            LastPaymentDate: 0,
+            interest: 0
+          });
+        }
+      }
+      return acc;
+    }, {});
+  } else {
+    cMap = datt1.reduce((acc, purchase) => {
+      const parsedPurchaseDate = XLSX.SSF.parse_date_code(purchase.Date);
+      const jsPurchaseDate = new Date(parsedPurchaseDate.y, parsedPurchaseDate.m - 1, parsedPurchaseDate.d);
+      if (jsPurchaseDate < new Date(EndDate)) {
+        if (!acc[purchase['Customer Code']]) acc[purchase['Customer Code']] = [];
+        acc[purchase['Customer Code']].push({
+          ...purchase,
+          RemainingChallanAmount: purchase['Total Amount'],
+          LastPaymentDate: 0,
+          interest: 0
+        });
+      }
+      return acc;
+    }, {});
+  }
+  
+
+  
 
   datt2.forEach(payment => {
     if (cMap[payment['Customer Code']]) {
@@ -64,7 +115,7 @@ function applyPaymentsAndCalculateInterest(datt1, datt2) {
           const jsDate2 = new Date(parsedDate2.y, parsedDate2.m - 1, parsedDate2.d, parsedDate2.H, parsedDate2.M, parsedDate2.S);
           let dueDays = 0;
           const daysPastDue = calculateDaysBetween(jsDate1, jsDate2);
-
+          purchase["Customer Code"]
           if (purchase.LastPaymentDate !== 0) {
             const parsedDate3 = XLSX.SSF.parse_date_code(purchase.LastPaymentDate);
             const jsDate3 = new Date(parsedDate3.y, parsedDate3.m - 1, parsedDate3.d, parsedDate3.H, parsedDate3.M, parsedDate3.S);
@@ -78,33 +129,31 @@ function applyPaymentsAndCalculateInterest(datt1, datt2) {
             RemainingChallanAmountPayment -= deduction;
             purchase.LastPaymentDate = payment.Date;
           } else {
-
-            if (daysPastDue <= 10) {
+            //normal deduction with no interest charges
+            if (daysPastDue <= parseInt(noDueDays)) {
               const deduction = Math.min(purchase.RemainingChallanAmount, RemainingChallanAmountPayment);
               purchase.RemainingChallanAmount -= deduction;
               RemainingChallanAmountPayment -= deduction;
               purchase.LastPaymentDate = payment.Date;
-              // normal deduct and payment date set
-            } else {
-              if (daysPastDue <= 20) {
+            } else //deduction with interest charges
+            {
+              if (daysPastDue <= (parseInt(noDueDays) * 2)) {
                 if (purchase.LastPaymentDate === 0) {
-
                   const deduction = Math.min(purchase.RemainingChallanAmount, RemainingChallanAmountPayment);
-                  purchase.interest += interestAmount(purchase.RemainingChallanAmount, daysPastDue - 10);
+                  purchase.interest += interestAmount(purchase.RemainingChallanAmount, daysPastDue - parseInt(noDueDays));
                   purchase.RemainingChallanAmount -= deduction;
                   RemainingChallanAmountPayment -= deduction;
                   purchase.LastPaymentDate = payment.Date;
                 } else {
-
                   if (parseInt(purchase.Date) > parseInt(purchase.LastPaymentDate)) {
                     const deduction = Math.min(purchase.RemainingChallanAmount, RemainingChallanAmountPayment);
-                    purchase.interest += interestAmount(purchase.RemainingChallanAmount, daysPastDue - 10);
+                    purchase.interest += interestAmount(purchase.RemainingChallanAmount, daysPastDue - parseInt(noDueDays));
                     purchase.RemainingChallanAmount -= deduction;
                     RemainingChallanAmountPayment -= deduction;
                     purchase.LastPaymentDate = payment.Date;
                   } else {
                     const deduction = Math.min(purchase.RemainingChallanAmount, RemainingChallanAmountPayment);
-                    purchase.interest += interestAmount(purchase.RemainingChallanAmount, daysPastDue - 10);
+                    purchase.interest += interestAmount(purchase.RemainingChallanAmount, daysPastDue - parseInt(noDueDays));
                     purchase.RemainingChallanAmount -= deduction;
                     RemainingChallanAmountPayment -= deduction;
                     purchase.LastPaymentDate = payment.Date;
@@ -115,21 +164,21 @@ function applyPaymentsAndCalculateInterest(datt1, datt2) {
                 //deduct amount and set lastpayment date
                 if (purchase.LastPaymentDate === 0) {
                   const deduction = Math.min(purchase.RemainingChallanAmount, RemainingChallanAmountPayment);
-                  purchase.interest += interestAmount(purchase.RemainingChallanAmount, daysPastDue - 10);
+                  purchase.interest += interestAmount(purchase.RemainingChallanAmount, daysPastDue - parseInt(noDueDays));
                   purchase.RemainingChallanAmount -= deduction;
                   RemainingChallanAmountPayment -= deduction;
                   purchase.LastPaymentDate = payment.Date;
                 } else {
                   if (parseInt(purchase.LastPaymentDate) < parseInt(purchase.Date)) {
                     const deduction = Math.min(purchase.RemainingChallanAmount, RemainingChallanAmountPayment);
-                    purchase.interest += interestAmount(purchase.RemainingChallanAmount, daysPastDue - 10);
+                    purchase.interest += interestAmount(purchase.RemainingChallanAmount, daysPastDue - parseInt(noDueDays));
                     purchase.RemainingChallanAmount -= deduction;
                     RemainingChallanAmountPayment -= deduction;
                     purchase.LastPaymentDate = payment.Date;
                   } else {
-                    if (parseInt(purchase.LastPaymentDate) < parseInt(purchase.Date) + 10) {
+                    if (parseInt(purchase.LastPaymentDate) < parseInt(purchase.Date) + parseInt(noDueDays)) {
                       const deduction = Math.min(purchase.RemainingChallanAmount, RemainingChallanAmountPayment);
-                      purchase.interest += interestAmount(purchase.RemainingChallanAmount, daysPastDue - 10);
+                      purchase.interest += interestAmount(purchase.RemainingChallanAmount, daysPastDue - parseInt(noDueDays));
                       purchase.RemainingChallanAmount -= deduction;
                       RemainingChallanAmountPayment -= deduction;
                       purchase.LastPaymentDate = payment.Date;
@@ -149,30 +198,59 @@ function applyPaymentsAndCalculateInterest(datt1, datt2) {
       }
     }
   })
+  console.log("cMap::", cMap)
 
+
+  //calculation for End Date
   let ids = Object.keys(cMap);
   ids.forEach(id => {
     cMap[id].forEach(obj => {
       if (obj.RemainingChallanAmount > 0) {
+        console.log("Customer Code:::", obj["Customer Code"]);
+        console.log("Date:::", obj["Date"]);
+
         const parsedDate1 = XLSX.SSF.parse_date_code(obj.Date);
+        console.log("parsedDate1:::", parsedDate1);
+
         const jsDate1 = new Date(parsedDate1.y, parsedDate1.m - 1, parsedDate1.d, parsedDate1.H, parsedDate1.M, parsedDate1.S);
+        console.log("jsDate1:::", jsDate1);
+
         let dueDays = 0;
-        const daysPastDue = calculateDaysBetween(jsDate1, EndDate);
+        let daysPastDue = calculateDaysBetween(jsDate1, EndDate);
+        console.log("daysPastDue:::", daysPastDue);
+
         if (obj.LastPaymentDate !== 0) {
           const parsedDate3 = XLSX.SSF.parse_date_code(obj.LastPaymentDate);
           const jsDate3 = new Date(parsedDate3.y, parsedDate3.m - 1, parsedDate3.d, parsedDate3.H, parsedDate3.M, parsedDate3.S);
           dueDays = calculateDaysBetween(jsDate3, EndDate);
+          // console.log("dueDays:::", dueDays);
+          if (obj.date == 45396 && obj.RemainingChallanAmount == 75000) {
+            console.log("if 001");
+          }
         }
         if (obj.LastPaymentDate === 0) {
-          obj.interest += interestAmount(obj.RemainingChallanAmount, daysPastDue - 10);
+          obj.interest += interestAmount(obj.RemainingChallanAmount, daysPastDue - parseInt(noDueDays));
+          // console.log("obj.LastPaymentDate === 0", interestAmount(obj.RemainingChallanAmount, daysPastDue - parseInt(noDueDays)))
+          if (obj.date == 45396 && obj.RemainingChallanAmount == 75000) {
+            console.log("if 002");
+          }
         } else {
           if (parseInt(obj.Date) > parseInt(obj.LastPaymentDate)) {
-            obj.interest += interestAmount(obj.RemainingChallanAmount, daysPastDue - 10);
+            obj.interest += interestAmount(obj.RemainingChallanAmount, daysPastDue - parseInt(noDueDays));
+            if (obj.date == 45396 && obj.RemainingChallanAmount == 75000) {
+              console.log("if 003");
+            }
           } else {
-            if (parseInt(obj.Date) + 10 > parseInt(obj.LastPaymentDate)) {
-              obj.interest += interestAmount(obj.RemainingChallanAmount, daysPastDue - 10);
+            if (parseInt(obj.Date) + parseInt(noDueDays) > parseInt(obj.LastPaymentDate)) {
+              obj.interest += interestAmount(obj.RemainingChallanAmount, daysPastDue - parseInt(noDueDays));
+              if (obj.date == 45396 && obj.RemainingChallanAmount == 75000) {
+                console.log("if 004");
+              }
             } else {
               obj.interest += interestAmount(obj.RemainingChallanAmount, dueDays);
+              if (obj.date == 45396 && obj.RemainingChallanAmount == 75000) {
+                console.log("if 005");
+              }
             }
           }
         }
@@ -222,21 +300,85 @@ ipcMain.on("file-selected2", (event, path) => {
         "Challan Date": jsDate1,
         "Total Challan Amount": row["Total Amount"],
         "Payment Date": jsDate2,
-        "Amount Left": row.RemainingChallanAmount,
-        "Interest Amount (13.5% per annum)": row.interest,
+        "Amount Left": Math.round(row.RemainingChallanAmount),
+        "Interest Amount (13.5% per annum)": Math.round(row.interest),
       }
       dataForExcelObj.push(newObj);
     })
-    console.log(JSON.stringify(dataForExcelObj));
+    console.log("dataForExcelObj::::",JSON.stringify(dataForExcelObj));
   })
   console.log("event")
+  // event.reply("dataForExcelObj", dataForExcelObj);
+
+  // const newWorkbook = XLSX.utils.book_new();
+  // const newSheet = XLSX.utils.json_to_sheet(dataForExcelObj);
+  // XLSX.utils.book_append_sheet(newWorkbook, newSheet, "Sheet1");
+  // XLSX.writeFile(newWorkbook, "finalDataSheet.xlsx");
+
+
+  // data1 = [];
+  // data2 = [];
+  // dataForExcelObj = [];
+  // dat1 = 0;
+  // dat2 = 0;
+  // cMap = 0;
+});
+ipcMain.on('form-submitted', (event) => {
   event.reply("dataForExcelObj", dataForExcelObj);
-  console.log("jnsbjkx")
+
+  const nowDate = new Date();
+  const month = nowDate.getMonth() + 1; 
+  const date = nowDate.getDate();
+  const year = nowDate.getFullYear();
+  const time = nowDate.toLocaleTimeString().replace(/:/g, '-'); 
+
   const newWorkbook = XLSX.utils.book_new();
   const newSheet = XLSX.utils.json_to_sheet(dataForExcelObj);
   XLSX.utils.book_append_sheet(newWorkbook, newSheet, "Sheet1");
-  XLSX.writeFile(newWorkbook, "finalDataSheet.xlsx");
+
+  const fileName = `calculatedInterestAmount_${customerIdVal ? `(${customerIdVal})`:""}_${date}-${month}-${year}_${time}.xlsx`;
+  const folderPath = "./DataSheets";
+  if (!fs.existsSync(folderPath)) {
+    fs.mkdirSync(folderPath);
+    console.log(`Directory ${folderPath} created.`);
+  } else {
+    console.log(`Directory ${folderPath} already exists.`);
+  }
+  XLSX.writeFile(newWorkbook, `./DataSheets/${fileName}`);
+
+  // Clear the data arrays
+  data1 = [];
+  data2 = [];
+  dataForExcelObj = [];
+  dat1 = [];
+  dat2 = [];
+  cMap = [];
+  customerIdVal= '';
 });
+
+
+ipcMain.on("days", (event, data) => {
+  noDueDays = data;
+  console.log("parseInt(noDueDays)::", parseInt(noDueDays))
+});
+
+ipcMain.on("date", (event, data) => {
+  const date = new Date(data);
+  const formattedDate = date;
+  EndDate = formattedDate;
+  console.log("EndDate::", EndDate);
+});
+
+ipcMain.on("percent", (event, data) => {
+  interestPercent = data / 100;
+  console.log("interestPercent::", interestPercent)
+});
+
+ipcMain.on("customerIdVal", (event, data) => {
+  customerIdVal = data;
+  console.log("customerIdVal::", customerIdVal);
+});
+
 
 app.whenReady().then(() => {
   createWindow();
