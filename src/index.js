@@ -43,6 +43,9 @@ let cMap;
 let interestPercent = 0;
 let noDueDays = 0;
 let EndDate = 0;
+let copyInterestPercent = 0;
+let copyNoDueDays = 0;
+let copyEndDate = 0;
 let customerIdVal = '';
 function calculateDaysBetween(startDate, EndDate) {
   const start = new Date(startDate);
@@ -66,7 +69,7 @@ function applyPaymentsAndCalculateInterest(datt1, datt2) {
   //   }
   // }, {});
 
-  if (customerIdVal !== '' && customerIdVal !== 0) {
+  if (customerIdVal !== '') {
     cMap = datt1.reduce((acc, purchase) => {
       const parsedPurchaseDate = XLSX.SSF.parse_date_code(purchase.Date);
       const jsPurchaseDate = new Date(parsedPurchaseDate.y, parsedPurchaseDate.m - 1, parsedPurchaseDate.d);
@@ -91,7 +94,7 @@ function applyPaymentsAndCalculateInterest(datt1, datt2) {
         if (!acc[purchase['Customer Code']]) acc[purchase['Customer Code']] = [];
         acc[purchase['Customer Code']].push({
           ...purchase,
-          RemainingChallanAmount: purchase['Total Amount'],
+          RemainingChallanAmount: purchase['TOTAL (Final Challan Price)'],
           LastPaymentDate: 0,
           interest: 0
         });
@@ -99,9 +102,9 @@ function applyPaymentsAndCalculateInterest(datt1, datt2) {
       return acc;
     }, {});
   }
-  
 
-  
+
+
 
   datt2.forEach(payment => {
     if (cMap[payment['Customer Code']]) {
@@ -223,34 +226,21 @@ function applyPaymentsAndCalculateInterest(datt1, datt2) {
           const parsedDate3 = XLSX.SSF.parse_date_code(obj.LastPaymentDate);
           const jsDate3 = new Date(parsedDate3.y, parsedDate3.m - 1, parsedDate3.d, parsedDate3.H, parsedDate3.M, parsedDate3.S);
           dueDays = calculateDaysBetween(jsDate3, EndDate);
-          // console.log("dueDays:::", dueDays);
-          if (obj.date == 45396 && obj.RemainingChallanAmount == 75000) {
-            console.log("if 001");
-          }
         }
         if (obj.LastPaymentDate === 0) {
           obj.interest += interestAmount(obj.RemainingChallanAmount, daysPastDue - parseInt(noDueDays));
-          // console.log("obj.LastPaymentDate === 0", interestAmount(obj.RemainingChallanAmount, daysPastDue - parseInt(noDueDays)))
-          if (obj.date == 45396 && obj.RemainingChallanAmount == 75000) {
-            console.log("if 002");
-          }
+
         } else {
           if (parseInt(obj.Date) > parseInt(obj.LastPaymentDate)) {
             obj.interest += interestAmount(obj.RemainingChallanAmount, daysPastDue - parseInt(noDueDays));
-            if (obj.date == 45396 && obj.RemainingChallanAmount == 75000) {
-              console.log("if 003");
-            }
+
           } else {
             if (parseInt(obj.Date) + parseInt(noDueDays) > parseInt(obj.LastPaymentDate)) {
               obj.interest += interestAmount(obj.RemainingChallanAmount, daysPastDue - parseInt(noDueDays));
-              if (obj.date == 45396 && obj.RemainingChallanAmount == 75000) {
-                console.log("if 004");
-              }
+
             } else {
               obj.interest += interestAmount(obj.RemainingChallanAmount, dueDays);
-              if (obj.date == 45396 && obj.RemainingChallanAmount == 75000) {
-                console.log("if 005");
-              }
+
             }
           }
         }
@@ -296,47 +286,37 @@ ipcMain.on("file-selected2", (event, path) => {
       }
       newObj = {
         "Party Id": id,
+        "Challan No": row["Challan No."],
         "Party Name": row["Customer Name"],
         "Challan Date": jsDate1,
-        "Total Challan Amount": row["Total Amount"],
+        "TOTAL (Final Challan Price)": row["TOTAL (Final Challan Price)"],
         "Payment Date": jsDate2,
         "Amount Left": Math.round(row.RemainingChallanAmount),
         "Interest Amount (13.5% per annum)": Math.round(row.interest),
       }
       dataForExcelObj.push(newObj);
     })
-    console.log("dataForExcelObj::::",JSON.stringify(dataForExcelObj));
+    console.log("dataForExcelObj::::", JSON.stringify(dataForExcelObj));
   })
   console.log("event")
-  // event.reply("dataForExcelObj", dataForExcelObj);
 
-  // const newWorkbook = XLSX.utils.book_new();
-  // const newSheet = XLSX.utils.json_to_sheet(dataForExcelObj);
-  // XLSX.utils.book_append_sheet(newWorkbook, newSheet, "Sheet1");
-  // XLSX.writeFile(newWorkbook, "finalDataSheet.xlsx");
-
-
-  // data1 = [];
-  // data2 = [];
-  // dataForExcelObj = [];
-  // dat1 = 0;
-  // dat2 = 0;
-  // cMap = 0;
 });
 ipcMain.on('form-submitted', (event) => {
   event.reply("dataForExcelObj", dataForExcelObj);
 
+
+
   const nowDate = new Date();
-  const month = nowDate.getMonth() + 1; 
+  const month = nowDate.getMonth() + 1;
   const date = nowDate.getDate();
   const year = nowDate.getFullYear();
-  const time = nowDate.toLocaleTimeString().replace(/:/g, '-'); 
+  const time = nowDate.toLocaleTimeString().replace(/:/g, '-');
 
   const newWorkbook = XLSX.utils.book_new();
   const newSheet = XLSX.utils.json_to_sheet(dataForExcelObj);
   XLSX.utils.book_append_sheet(newWorkbook, newSheet, "Sheet1");
 
-  const fileName = `calculatedInterestAmount_${customerIdVal ? `(${customerIdVal})`:""}_${date}-${month}-${year}_${time}.xlsx`;
+  const fileName = `calculatedInterestAmount_${customerIdVal ? `(${customerIdVal})` : ""}_${date}-${month}-${year}_${time}.xlsx`;
   const folderPath = "./DataSheets";
   if (!fs.existsSync(folderPath)) {
     fs.mkdirSync(folderPath);
@@ -353,12 +333,13 @@ ipcMain.on('form-submitted', (event) => {
   dat1 = [];
   dat2 = [];
   cMap = [];
-  customerIdVal= '';
+  customerIdVal = '';
 });
 
 
 ipcMain.on("days", (event, data) => {
   noDueDays = data;
+
   console.log("parseInt(noDueDays)::", parseInt(noDueDays))
 });
 
